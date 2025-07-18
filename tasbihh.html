@@ -1,144 +1,137 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TASBIH DIGITAL</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <title>Tasbih Digital</title>
+    <!-- Memuat dependensi dari CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
     <style>
-        body {
-            -webkit-user-select: none; /* Safari */
-            -ms-user-select: none; /* IE 10+ and Edge */
-            user-select: none; /* Standard syntax */
-        }
+        body { -webkit-user-select: none; -ms-user-select: none; user-select: none; cursor: pointer; }
+        #reset-button, .history-item { cursor: pointer; }
+        .history-item { cursor: grab; }
+        
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animated-card { animation: fadeInUp 0.5s ease-out forwards; opacity: 0; }
+        #counter-container { transition: transform 0.1s ease-out; }
+        .pulse { transform: scale(1.1); }
+        
+        .history-item { position: relative; overflow: hidden; }
+        .history-content { position: relative; background-color: white; transition: transform 0.3s ease-out; touch-action: pan-y; }
+        .delete-indicator { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: flex-start; padding: 0 1.5rem; color: white; font-weight: bold; background-color: #ef4444; opacity: 0; transition: opacity 0.3s ease; }
+        .history-item.swiping .delete-indicator { opacity: 1; }
+        .history-item.deleting .history-content { transform: translateX(100%); opacity: 0; }
+
+        #toast-notification { position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); transition: bottom 0.5s ease-in-out; z-index: 50; }
+        #toast-notification.show { bottom: 30px; }
+
+        /* Gaya untuk Baterai agar transisi mulus */
+        #battery-fill { transition: width 0.5s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.5s ease-out; }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen" onclick="tampilkanHitungan(event)">
+<body class="bg-gray-50 text-gray-800">
 
-    <div class="text-center mb-8">
-        <div id="angkaHitungan" class="text-8xl font-bold mb-80">0</div>
-        <div class="mt-4 grid grid-cols-2 sm:grid-cols-2 gap-4">
-            <button class="bg-red-500 text-white px-4 py-2 rounded-lg flex items-center justify-center" onclick="resetHitungan(event)">
-                <i class="fas fa-sync-alt fa-2xl mr-2"></i> Reset
-            </button>
-            <button class="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center justify-center" onclick="simpanHitungan(event)">
-                <i class="fas fa-save fa-2xl mr-2"></i> Simpan
-            </button>
-            <button class="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center justify-center" onclick="toggleFullScreen(event)">
-                <i class="fas fa-expand fa-2xl mr-2"></i> Fullscreen
-            </button>
-            <button class="bg-yellow-500 text-white px-4 py-2 rounded-lg flex items-center justify-center" onclick="aturAlarm(event)">
-                <i class="fas fa-bell fa-2xl mr-2"></i> Alarm
-            </button>
+    <!-- Area Penghitung Utama -->
+    <div id="counter-section" class="flex flex-col justify-center items-center min-h-[50vh] text-center p-8 animated-card">
+        <div id="counter-container" class="flex items-baseline justify-center gap-4">
+            <span id="count-display" class="text-9xl font-bold tracking-tighter text-teal-600">0</span>
+            <span id="remaining-display" class="text-5xl font-light text-gray-400">786</span>
         </div>
+        <div id="battery-container" class="mt-6 w-48 h-10 border-2 border-gray-400 rounded-lg p-1 flex items-center relative">
+            <div id="battery-fill" class="h-full rounded-md" style="width: 0%;"></div>
+            <span id="battery-percent" class="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-700">0%</span>
+            <div class="w-1 h-4 bg-gray-400 rounded-r-full absolute -right-2 top-1/2 -translate-y-1/2"></div>
+        </div>
+        <button id="reset-button" class="mt-6 px-8 py-2 border border-gray-400 text-gray-500 rounded-full hover:bg-gray-100 hover:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-all">Reset</button>
     </div>
 
-    <div id="savedTasbih" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-screen-lg px-4">
-        <!-- Saved tasbihs will appear here -->
-    </div>
-
-    <!-- Audio untuk alarm -->
-    <audio id="alarmSound" src="assets/tasbih.mp3" preload="auto"></audio>
+    <!-- Kontainer konten lain -->
+    <main class="p-4 space-y-4">
+        <div class="bg-white rounded-2xl shadow-lg p-4 animated-card" style="animation-delay: 0.1s;"><h2 class="text-lg font-semibold mb-2 text-center text-gray-600">Aktivitas 7 Hari Terakhir</h2><div class="h-32"><canvas id="activityChart"></canvas></div></div>
+        <div class="bg-white rounded-2xl shadow-lg p-4 animated-card" style="animation-delay: 0.2s;"><h2 class="text-lg font-semibold text-center text-gray-600 mb-2">Riwayat Selesai</h2><p class="text-center text-xs text-gray-400 mb-3">(Geser untuk menghapus)</p><div id="history-container" class="max-h-60 overflow-y-auto"><ul id="history-list" class="space-y-2"></ul></div></div>
+        <footer class="text-center text-xs text-gray-400 py-4 animated-card" style="animation-delay: 0.3s;">© <span id="year"></span> Muhammad Riyad. All rights reserved.</footer>
+    </main>
+    <div id="toast-notification" class="bg-gray-800 text-white py-2 px-6 rounded-full shadow-lg"><p id="toast-message"></p></div>
 
     <script>
-        var hitungan = 0;
-        var targetHitungan = null;
+    document.addEventListener('DOMContentLoaded', () => {
+        const countDisplay = document.getElementById('count-display'), remainingDisplay = document.getElementById('remaining-display');
+        const counterContainer = document.getElementById('counter-container'), batteryFill = document.getElementById('battery-fill');
+        const batteryPercent = document.getElementById('battery-percent'), resetButton = document.getElementById('reset-button');
+        const historyList = document.getElementById('history-list'), chartCanvas = document.getElementById('activityChart');
+        const toast = document.getElementById('toast-notification'), toastMessage = document.getElementById('toast-message');
+        document.getElementById('year').textContent = new Date().getFullYear();
 
-        function tampilkanHitungan(event) {
-            if (!event.target.closest('#savedTasbih') && !event.target.closest('button')) {
-                var angkaHitungan = document.getElementById("angkaHitungan");
-                hitungan++;
-                angkaHitungan.textContent = hitungan;
-                if (targetHitungan && hitungan >= targetHitungan) {
-                    var alarmSound = document.getElementById("alarmSound");
-                    alarmSound.play().catch(error => {
-                        console.error("Audio playback failed:", error);
-                    });
-                    alert("Target hitungan tercapai!");
-                    targetHitungan = null;
-                }
-            }
+        const TARGET_COUNT = 786; let count = 0; let myChart;
+
+        function updateDisplay() {
+            const remaining = TARGET_COUNT - count;
+            countDisplay.innerText = count;
+            remainingDisplay.innerText = remaining >= 0 ? remaining : 0;
+            updateBattery();
         }
 
-        function resetHitungan(event) {
-            event.stopPropagation();
-            hitungan = 0;
-            var angkaHitungan = document.getElementById("angkaHitungan");
-            angkaHitungan.textContent = hitungan;
+        function updateBattery() {
+            const percentage = Math.min(100, (count / TARGET_COUNT) * 100);
+            batteryFill.style.width = percentage + '%';
+            batteryPercent.textContent = Math.floor(percentage) + '%';
+            batteryFill.classList.remove('bg-red-500', 'bg-amber-400', 'bg-teal-500');
+            if (percentage < 20) { batteryFill.classList.add('bg-red-500'); } 
+            else if (percentage < 75) { batteryFill.classList.add('bg-amber-400'); } 
+            else { batteryFill.classList.add('bg-teal-500'); }
         }
 
-        function simpanHitungan(event) {
-            event.stopPropagation();
-            var tasbihList = JSON.parse(localStorage.getItem('tasbihList')) || [];
-            var tasbihTitle = prompt("Masukkan judul untuk hitungan tasbih ini:");
-            if (tasbihTitle) {
-                tasbihList.push({ title: tasbihTitle, count: hitungan });
-                localStorage.setItem('tasbihList', JSON.stringify(tasbihList));
-                tampilkanTasbihTersimpan();
-                resetHitungan(event);
-            }
+        function saveProgress() { localStorage.setItem('bismillahCount', count); }
+        function loadProgress() { const savedCount = localStorage.getItem('bismillahCount'); if (savedCount !== null) count = parseInt(savedCount, 10); }
+        function triggerPulse() { counterContainer.classList.add('pulse'); setTimeout(() => counterContainer.classList.remove('pulse'), 100); }
+        function triggerConfetti() { confetti({ particleCount: 150, spread: 90, origin: { y: 0.3 } }); }
+        function showToast(message) { toastMessage.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000); }
+        function updateUI() { loadHistory(); renderChart(); }
+
+        function saveHistory() { let h = JSON.parse(localStorage.getItem('bismillahHistory')) || []; h.unshift({ date: new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), completedAt: new Date().toISOString() }); localStorage.setItem('bismillahHistory', JSON.stringify(h)); updateUI(); }
+        function loadHistory() { const h = JSON.parse(localStorage.getItem('bismillahHistory')) || []; historyList.innerHTML = ''; if (h.length === 0) { historyList.innerHTML = '<li class="text-gray-400 text-center italic p-4">Belum ada riwayat.</li>'; } else { h.forEach(e => { const li = document.createElement('li'); li.className = 'history-item rounded-md'; li.dataset.timestamp = e.completedAt; li.innerHTML = `<div class="delete-indicator">Hapus</div><div class="history-content bg-gray-100 p-3 rounded-md shadow-sm flex justify-between items-center"><span class="font-medium text-gray-700">${e.date}</span><span class="text-teal-600 font-semibold">Selesai</span></div>`; historyList.appendChild(li); }); } }
+        
+        // FUNGSI PENGHAPUSAN YANG DIPERBAIKI
+        function deleteHistoryEntry(timestamp) {
+            let history = JSON.parse(localStorage.getItem('bismillahHistory')) || [];
+            const newHistory = history.filter(entry => entry.completedAt !== timestamp);
+            localStorage.setItem('bismillahHistory', JSON.stringify(newHistory));
+            updateUI();
         }
 
-        function tampilkanTasbihTersimpan() {
-            var tasbihList = JSON.parse(localStorage.getItem('tasbihList')) || [];
-            var savedTasbihDiv = document.getElementById('savedTasbih');
-            savedTasbihDiv.innerHTML = '';
-            tasbihList.forEach((tasbih, index) => {
-                var tasbihElement = document.createElement('div');
-                tasbihElement.className = 'bg-gray-800 text-white p-4 rounded-lg shadow-lg flex justify-between items-center cursor-pointer';
-                tasbihElement.innerHTML = `
-                    <div onclick="lanjutkanHitungan(event, ${index})" class="w-full">
-                        <h3 class="text-xl font-bold">${tasbih.title}</h3>
-                        <p>Total: ${tasbih.count}</p>
-                    </div>
-                    <button class="bg-red-500 text-white px-2 py-1 rounded-lg" onclick="hapusHitungan(event, ${index})">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                `;
-                savedTasbihDiv.appendChild(tasbihElement);
-            });
+        function renderChart() { const h = JSON.parse(localStorage.getItem('bismillahHistory')) || []; const data = Array(7).fill(0); const labels = []; const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']; for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); labels.push(dayNames[d.getDay()]); d.setHours(0, 0, 0, 0); const completionsOnDay = h.filter(e => { const entryDate = new Date(e.completedAt); entryDate.setHours(0, 0, 0, 0); return entryDate.getTime() === d.getTime(); }).length; data[6 - i] = completionsOnDay; } const ctx = chartCanvas.getContext('2d'); if (myChart) { myChart.destroy(); } myChart = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{ label: 'Sesi Selesai', data, backgroundColor: 'rgba(13, 148, 136, 0.6)', borderColor: 'rgba(15, 118, 110, 1)', borderWidth: 1, borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } } }); }
+        
+        // --- LOGIKA UTAMA ---
+        document.body.addEventListener('click', (event) => { if (event.target.closest('#reset-button, #history-list')) return; if (count < TARGET_COUNT) { count++; updateDisplay(); saveProgress(); triggerPulse(); if (navigator.vibrate) navigator.vibrate(20); } else if (count === TARGET_COUNT) { count++; saveHistory(); triggerConfetti(); showToast("Alhamdulillah! Selesai 786x"); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } });
+        resetButton.addEventListener('click', (event) => { event.stopPropagation(); if (confirm('Yakin ingin mereset hitungan ke 0?')) { count = 0; updateDisplay(); saveProgress(); } });
+        
+        // --- LOGIKA GESER UNTUK MENGHAPUS ---
+        let swipedItem = null, startX = 0, currentX = 0, isSwiping = false; function onSwipeStart(e) { const item = e.target.closest('.history-item'); if (!item) return; e.stopPropagation(); swipedItem = item; startX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX; isSwiping = true; } function onSwipeMove(e) { if (!isSwiping || !swipedItem) return; currentX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX; const diff = currentX - startX; swipedItem.classList.add('swiping'); swipedItem.querySelector('.history-content').style.transform = `translateX(${diff}px)`; } function onSwipeEnd() { if (!isSwiping || !swipedItem) return; const diff = currentX - startX; const threshold = swipedItem.offsetWidth * 0.35; const content = swipedItem.querySelector('.history-content'); if (Math.abs(diff) > threshold) { swipedItem.classList.add('deleting'); setTimeout(() => deleteHistoryEntry(swipedItem.dataset.timestamp), 300); } else { content.style.transform = 'translateX(0)'; } swipedItem.classList.remove('swiping'); isSwiping = false; swipedItem = null; startX = 0; currentX = 0; } historyList.addEventListener('mousedown', onSwipeStart); historyList.addEventListener('touchstart', onSwipeStart, { passive: true }); document.addEventListener('mousemove', onSwipeMove); document.addEventListener('touchmove', onSwipeMove, { passive: true }); document.addEventListener('mouseup', onSwipeEnd); document.addEventListener('touchend', onSwipeEnd);
+
+        // --- Inisialisasi Aplikasi BARU ---
+        function initializeApp() {
+            // 1. Muat data progres dari localStorage
+            loadProgress();
+
+            // 2. Tampilkan angka hitungan dan sisa secara langsung
+            const remaining = TARGET_COUNT - count;
+            countDisplay.innerText = count;
+            remainingDisplay.innerText = remaining >= 0 ? remaining : 0;
+            
+            // 3. Tunda pembaruan baterai untuk menciptakan animasi "Power On"
+            // Ini memberi browser waktu untuk merender baterai dengan lebar 0% terlebih dahulu
+            setTimeout(() => {
+                updateBattery();
+            }, 100); // Penundaan 100ms sudah cukup
+
+            // 4. Muat riwayat dan grafik
+            updateUI();
         }
 
-        function hapusHitungan(event, index) {
-            event.stopPropagation();
-            var tasbihList = JSON.parse(localStorage.getItem('tasbihList')) || [];
-            tasbihList.splice(index, 1);
-            localStorage.setItem('tasbihList', JSON.stringify(tasbihList));
-            tampilkanTasbihTersimpan();
-        }
-
-        function lanjutkanHitungan(event, index) {
-            event.stopPropagation();
-            var tasbihList = JSON.parse(localStorage.getItem('tasbihList')) || [];
-            if (tasbihList[index]) {
-                hitungan = tasbihList[index].count;
-                var angkaHitungan = document.getElementById("angkaHitungan");
-                angkaHitungan.textContent = hitungan;
-            }
-        }
-
-        function toggleFullScreen(event) {
-            event.stopPropagation();
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    console.log(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-                });
-            } else {
-                document.exitFullscreen();
-            }
-        }
-
-        function aturAlarm(event) {
-            event.stopPropagation();
-            var target = prompt("Masukkan target hitungan untuk alarm:");
-            if (target && !isNaN(target)) {
-                targetHitungan = parseInt(target, 10);
-                
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', tampilkanTasbihTersimpan);
+        initializeApp(); // Panggil fungsi inisialisasi utama
+    });
     </script>
 </body>
 </html>
